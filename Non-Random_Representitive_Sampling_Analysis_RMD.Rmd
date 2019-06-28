@@ -1,0 +1,430 @@
+---
+title: "Non-Random Representitive Sampling Analysis"
+author: "Serena Woodhouse"
+date: "April 8, 2019"
+output: 
+  html_document:
+    theme: readable
+    toc: yes
+    toc_depth: 2
+    toc_float: true
+    code_folding: show
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE, error=FALSE)
+```
+
+
+```{r pressure, warning = FALSE, out.width = "100%", message = FALSE, echo = FALSE, results=FALSE, split=FALSE}
+
+#install.packages("ggplot2")
+#install.packages("dplyr")
+#install.packages("tidyr")
+#install.packages("corrplot")
+#install.packages("lubridate")
+#install.packages("ggcorrplot")
+#install.packages("caret")
+#install.packages("gridExtra")
+#install.packages("randomForest")
+#library(gridExtra)
+#library(randomForest)
+#library(caret)
+#library(ggcorrplot)
+#library(tidyr)
+#library(dplyr)
+#library(corrplot)
+#library(ggplot2)
+#library(lubridate)
+
+store_att <- read.csv("SUU_store_attributes_mav.csv", stringsAsFactors = F)
+store_att <- store_att[,-1]
+store_att <- store_att[1:336,]
+lift <- read.csv("SUU_test_data_and_MarketDial_lift.csv")
+lift <- lift[,-1]
+lift$date_pre_start <- as.Date(lift$date_pre_start, format = "%Y-%m-%d")
+lift$date_implementation_start <- as.Date(lift$date_implementation_start, format = "%Y-%m-%d")
+lift$date_test_start <- as.Date(lift$date_test_start, format = "%Y-%m-%d")
+lift$date_test_end <- as.Date(lift$date_test_end, format = "%Y-%m-%d")
+
+test12 <- read.csv("test_12_revenue_data")
+test12 <- test12[,-1]
+test12$date_week <- as.Date(test12$date_week, format = "%Y-%m-%d")
+test2 <- read.csv("test_2_revenue_data")
+test2 <- test2[,-1]
+test2$date_week <- as.Date(test2$date_week, format = "%Y-%m-%d")
+test21 <- read.csv("test_21_revenue_data")
+test21 <- test21[,-1]
+test21$date_week <- as.Date(test21$date_week, format = "%Y-%m-%d")
+test34 <- read.csv("test_34_revenue_data")
+test34 <- test34[,-1]
+test34$date_week <- as.Date(test34$date_week, format = "%Y-%m-%d")
+test5 <- read.csv("test_5_revenue_data")
+test5 <- test5[,-1]
+test5$date_week <- as.Date(test5$date_week, format = "%Y-%m-%d")
+test7 <- read.csv("test_7_revenue_data")
+test7 <- test7[,-1]
+test7$date_week <- as.Date(test7$date_week, format = "%Y-%m-%d")
+test8 <- read.csv("test_8_revenue_data")
+test8 <- test8[,-1]
+test8$date_week <- as.Date(test8$date_week, format = "%Y-%m-%d")
+
+str(store_att)
+low_state <- names(table(store_att$state)[(table(store_att$state) < 5)])
+store_att[store_att$state %in% low_state,"state"] <- "Other"
+
+for (i in which(sapply(store_att, is.numeric))) {
+  if (sum(is.na(store_att[,i])) < 5) {
+    store_att[is.na(store_att[,i]),i] <- mean(store_att[,i], na.rm = T)
+  }
+}
+
+# Manually fix NAs in factors
+
+store_att[,which(sapply(store_att, is.character))] <- 
+  lapply(store_att[,which(sapply(store_att, is.character))], factor)
+
+store_att[is.na(store_att$sales_liquor_percent_retail_sales),
+          "sales_liquor_percent_retail_sales"] <- 0
+
+df <- store_att
+ap <- unique(apply(df,FUN = is.na, MARGIN = 2))
+rowSums(ap)
+sapply(store_att, function(y) sum(length(which(is.na(y)))))
+ap <- ap[rowSums(ap) != 0,]
+
+store_att$NA1 <- rowSums(t(apply(is.na(df), 1, function(x) x == ap[1,]))) == ncol(df)
+store_att$NA2 <- rowSums(t(apply(is.na(df), 1, function(x) x == ap[2,]))) == ncol(df)
+store_att$NA3 <- rowSums(t(apply(is.na(df), 1, function(x) x == ap[3,]))) == ncol(df)
+store_att$NA4 <- rowSums(t(apply(is.na(df), 1, function(x) x == ap[4,]))) == ncol(df)
+
+
+for (i in which(sapply(store_att, is.numeric))) {
+  if (sum(is.na(store_att[,i])) > 0) {
+    store_att[is.na(store_att[,i]),i] <- mean(store_att[,i], na.rm = T)
+  }
+}
+
+
+
+# Store attributes is ready to go!
+
+min2 <- min(lift[lift$test_id == 2, "date_implementation_start"])
+min5 <- min(lift[lift$test_id == 5, "date_implementation_start"])
+min7 <- min(lift[lift$test_id == 7, "date_implementation_start"])
+min8 <- min(lift[lift$test_id == 8, "date_implementation_start"])
+min12 <- min(lift[lift$test_id == 12, "date_implementation_start"])
+min21 <- min(lift[lift$test_id == 21, "date_implementation_start"])
+min34 <- min(lift[lift$test_id == 34, "date_implementation_start"])
+
+library(dplyr)
+df2 <- test2 %>%
+  filter(date_week < min2) %>%
+  group_by(store_id) %>%
+  summarise(Cat_Avg = mean(test_2_direct_category_revenue),
+            Store_Avg = mean(test_2_whole_store_revenue),
+            Cat_Var = var(test_2_direct_category_revenue),
+            Store_Var = var(test_2_whole_store_revenue),
+            Pct_Cat = mean(test_2_direct_category_revenue) / 
+              mean(test_2_whole_store_revenue))
+
+df5 <- test5 %>%
+  filter(date_week < min2) %>%
+  group_by(store_id) %>%
+  summarise(Cat_Avg = mean(test_5_direct_category_revenue),
+            Store_Avg = mean(test_5_whole_store_revenue),
+            Cat_Var = var(test_5_direct_category_revenue),
+            Store_Var = var(test_5_whole_store_revenue),
+            Pct_Cat = mean(test_5_direct_category_revenue) / 
+              mean(test_5_whole_store_revenue))
+
+df7 <- test7 %>%
+  filter(date_week < min7) %>%
+  group_by(store_id) %>%
+  summarise(Cat_Avg = mean(test_7_direct_category_revenue),
+            Store_Avg = mean(test_7_whole_store_revenue),
+            Cat_Var = var(test_7_direct_category_revenue),
+            Store_Var = var(test_7_whole_store_revenue),
+            Pct_Cat = mean(test_7_direct_category_revenue) / 
+              mean(test_7_whole_store_revenue))
+
+df8 <- test8 %>%
+  filter(date_week < min8) %>%
+  group_by(store_id) %>%
+  summarise(Cat_Avg = mean(test_8_direct_category_revenue),
+            Store_Avg = mean(test_8_whole_store_revenue),
+            Cat_Var = var(test_8_direct_category_revenue),
+            Store_Var = var(test_8_whole_store_revenue),
+            Pct_Cat = mean(test_8_direct_category_revenue) / 
+              mean(test_8_whole_store_revenue))
+
+df12 <- test12 %>%
+  filter(date_week < min12) %>%
+  group_by(store_id) %>%
+  summarise(Cat_Avg = mean(test_12_direct_category_revenue),
+            Store_Avg = mean(test_12_whole_store_revenue),
+            Cat_Var = var(test_12_direct_category_revenue),
+            Store_Var = var(test_12_whole_store_revenue),
+            Pct_Cat = mean(test_12_direct_category_revenue) / 
+              mean(test_12_whole_store_revenue))
+
+df21 <- test21 %>%
+  filter(date_week < min21) %>%
+  group_by(store_id) %>%
+  summarise(Cat_Avg = mean(test_21_direct_category_revenue),
+            Store_Avg = mean(test_21_whole_store_revenue),
+            Cat_Var = var(test_21_direct_category_revenue),
+            Store_Var = var(test_21_whole_store_revenue),
+            Pct_Cat = mean(test_21_direct_category_revenue) / 
+              mean(test_21_whole_store_revenue))
+
+df34 <- test34 %>%
+  filter(date_week < min34) %>%
+  group_by(store_id) %>%
+  summarise(Cat_Avg = mean(test_34_direct_category_revenue),
+            Store_Avg = mean(test_34_whole_store_revenue),
+            Cat_Var = var(test_34_direct_category_revenue),
+            Store_Var = var(test_34_whole_store_revenue),
+            Pct_Cat = mean(test_34_direct_category_revenue) / 
+              mean(test_34_whole_store_revenue))
+
+
+
+## Other dataframes can be added
+
+store_att2 <- merge(store_att, df2, by = "store_id")
+store_att2 <- merge(store_att2, lift[lift$test_id == 2,c("treatment_store_id","lift")], by.x = "store_id", by.y = "treatment_store_id")
+
+store_att5 <- merge(store_att, df5, by = "store_id")
+store_att5 <- merge(store_att5, lift[lift$test_id == 5,c("treatment_store_id","lift")], by.x = "store_id", by.y = "treatment_store_id")
+store_att5[1,44] <- mean(store_att5$store_size_square_footage) 
+
+store_att7 <- merge(store_att, df7, by = "store_id")
+store_att7 <- merge(store_att7, lift[lift$test_id == 7,c("treatment_store_id","lift")], by.x = "store_id", by.y = "treatment_store_id")
+
+store_att8 <- merge(store_att, df8, by = "store_id")
+store_att8 <- merge(store_att8, lift[lift$test_id == 8,c("treatment_store_id","lift")], by.x = "store_id", by.y = "treatment_store_id")
+
+store_att12 <- merge(store_att, df12, by = "store_id")
+store_att12 <- merge(store_att12, lift[lift$test_id == 12,c("treatment_store_id","lift")], by.x = "store_id", by.y = "treatment_store_id")
+
+store_att21 <- merge(store_att, df21, by = "store_id")
+store_att21 <- merge(store_att21, lift[lift$test_id == 21,c("treatment_store_id","lift")], by.x = "store_id", by.y = "treatment_store_id")
+
+store_att34 <- merge(store_att, df34, by = "store_id")
+store_att34 <- merge(store_att34, lift[lift$test_id == 34,c("treatment_store_id","lift")], by.x = "store_id", by.y = "treatment_store_id")
+store_att34 <- store_att34[-23,]
+
+
+#### Merge All Tests Together #### 
+# First I'm going to try merging then splitting into train and test
+store_att2$testId <- as.factor(2)
+store_att5$testId <- as.factor(5)
+store_att7$testId <- as.factor(7)
+store_att8$testId <- as.factor(8)
+store_att12$testId <- as.factor(12)
+store_att21$testId <- as.factor(21)
+store_att34$testId <- as.factor(34)
+allTests <- rbind(store_att2, store_att5, store_att7, store_att8, store_att12, store_att21, store_att34)
+
+#take out conflicting variables
+allTests <- subset(allTests, select=-c(sales_beer_and_wine_percent_retail_sales,
+                                        sales_candy_percent_retail_sales,
+                                        sales_carbonated_packaged_bev_percent_retail_sales,
+                                        sales_cigarettes_percent_retail_sales,
+                                        sales_dairy_deli_percent_retail_sales,
+                                        sales_food_service_percent_retail_sales,
+                                        sales_fountain_cold_bev_percent_retail_sales,
+                                        sales_general_merchandise_percent_retail_sales,
+                                        sales_grocery_percent_retail_sales,
+                                        sales_health_and_beauty_care_percent_retail_sales,
+                                        sales_hot_beverage_percent_retail_sales,
+                                        sales_ice_percent_retail_sales,
+                                        sales_liquor_percent_retail_sales,
+                                        sales_mugs_._promotion_percent_retail_sales,
+                                        sales_non_carb_packaged_bev_percent_retail_sales,
+                                        sales_noveltyentertnmntgifts_percent_retail_sales,
+                                        sales_snacks_percent_retail_sales,
+                                        sales_specialty_cold_percent_retail_sales,
+                                        sales_tobacco_percent_retail_sales,
+                                        sales_fuel_percent_retail_sales,
+                                        NA1, NA2, NA3, NA4, testId, lift))
+
+allTests$state <- as.numeric(allTests$state)
+allTests$region <- as.numeric(allTests$region)
+allTests$store_style <- as.numeric(allTests$store_style)
+
+# Split into training and Testing
+set.seed(12121)
+sample <- sample.int(n = nrow(allTests), size = floor(.75*nrow(allTests)), replace = F)
+allTestsTrain <- allTests[sample, ]
+allTestsTest  <- allTests[-sample, ]
+
+
+# Model tuning
+set.seed(12121)
+control <- trainControl(method="repeatedcv", number=4, repeats=3)
+mtry <- sqrt(ncol(allTestsTrain))
+tunegrid <- expand.grid(.mtry=mtry)
+
+#rf models
+#include store revenue and store style
+#ntree < 500
+
+library(caret)
+
+allTestsTrain.pct_cat <- subset(allTestsTrain, select=-c(Cat_Avg, Cat_Var))
+rfallTests.pct_cat <- train(Pct_Cat~., data=allTestsTrain.pct_cat, method="rf", tuneGrid=tunegrid, trControl=control , importance = T, ntree = 500)
+rfallTests.pct_cat
+pred.allTests.pct_cat <- predict(rfallTests.pct_cat, newdata = allTestsTest)
+mean(abs(pred.allTests.pct_cat - allTestsTest$Pct_Cat))
+pctcatimp <- varImp(rfallTests.pct_cat)
+plot(pctcatimp)
+
+allTestsTrain.cat_avg <- subset(allTestsTrain, select=-c(Pct_Cat, Cat_Var))
+rfallTests.cat_avg <- train(Cat_Avg~., data=allTestsTrain.cat_avg, method="rf", tuneGrid=tunegrid, trControl=control , importance = T, ntree = 500)
+rfallTests.cat_avg
+pred.allTests.cat_avg <- predict(rfallTests.cat_avg, newdata = allTestsTest)
+mean(abs(pred.allTests.cat_avg - allTestsTest$Cat_Avg))
+catavgimp <- varImp(rfallTests.cat_avg)
+plot(catavgimp)
+
+allTestsTrain.cat_var <- subset(allTestsTrain, select=-c(Cat_Avg, Pct_Cat))
+rfallTests.cat_var <- train(Cat_Var~., data=allTestsTrain.cat_var, method="rf", tuneGrid=tunegrid, trControl=control , importance = T, ntree = 500)
+rfallTests.cat_var
+pred.allTests.cat_var <- predict(rfallTests.cat_var, newdata = allTestsTest)
+mean(abs(pred.allTests.cat_var - allTestsTest$Cat_Var))
+catvarimp <- varImp(rfallTests.cat_var)
+plot(catvarimp)
+```
+
+## Introduction
+
+This was done as part of an internship I participated in while attending Southern Utah University. I collaborated with three other students on this project to produce the final results as shown here.
+
+The purpose of this study is to identify proper site selection for pilot programs using non-random representative sampling. This involves three steps:
+1. Identify the optimal representative treatment group.
+2. Identify optimal control group.
+3. Employ the proper lift algorithm to compare the treatment to the control group.
+
+Our primary objective is to complete the first two steps. The existing algorithm being used to find the revenue difference between treatment and control groups will be used for step three.
+
+## Feature Extraction
+It is important to identify features on a per-test basis. Relevant category average revenue, relevant category average variance, percent of category revenue, and other variables could be important and can be extracted from location store performance. We should note that category statistics will change across tests, as different categories will be evaluated in each. This is acceptable for two reasons. First, we are searching for generalizeable features across tests. Second, even in perfect ignorance, relevant category information should be a feature taken into account in sampling so as to get the most accurate results when selecting stores to be in the sample. If a store has abnormally high sales in a target category, but no category specific data is being held constant then that crucial information is being lost and the resulting sample won't be as representitive.
+
+Before we could do any analysis we needed to:
+*Scale features to eliminate any weighting.
+*Maintain categorical variables, although weighting for categorical variables is inherently arbitrary.
+
+
+I'll go through the cleaning and feature extraction steps with test12 data.
+
+First I merge my data base that has all of the store attributes with the database that has test specific attributes. I combined them using the unique store ID.
+
+``` {r eval=FALSE}
+temp12 <- merge(store_att, df12, by = "store_id")
+```
+Remove variables that were not usefull/were not features.
+``` {r eval=FALSE}
+temp12 <- subset(temp12, select = -c(NA1, NA2, NA3, NA4, store_id))
+```
+Create dummy variables 
+``` {r eval=FALSE}
+temp12 <- fastDummies::dummy_cols(temp12)
+```
+Zero origin can be omitted category for each.
+``` {r eval=FALSE}
+temp12 <- subset(temp12, select = -c(region_Canyon,
+                                             state_WY,
+                                             store_style_COUNTRY,
+                                             state, store_style,
+                                             region))
+temp12 <- as.data.frame(scale(temp12, center = TRUE))
+temp12 <- temp12[-305,]
+```
+
+
+## Informed Priors Approach
+The main approach I worked on is using informed priors. This approach assumes that multiple tests/pilot programs have already been implemented successfully. Using the results of previous tests we can select a narrow set of features to sample across when finding the most representitive sample for treatment and control groups. After a number of tests are run, we can identify certain feature that consistently predict lift-the difference in revenue between treatment and control groups-across stores and tests. While each test is unique in some way, the commonalities in variable importance can inform us on which variables should be sampled across and which variables may be safely ignored when we are trying to select our representitive sample. It is essential to note that commonalities in variable importance is the key desirable outcome of this analysis. We are indifferent as to whether the variable has a positive or negative impact on lift results. Because of this, the random forest algorithm effectively blends the interaction needed for individual test results with identify as to whether a variable is important.
+
+``` {r eval=FALSE}
+lift_mod <- store_lifts[,-1]
+lift_mod <- lift_mod[lift_mod$lift != Inf,]
+lift_mod$testId <- as.factor(lift_mod$testId)
+```
+
+ Tuning parameters were explored.
+ Results: We need at least 75 trees and mtry does not materially
+ impact results. Example code for tuning:
+``` {r eval=FALSE}   
+control <- trainControl(method = "cv", number = 10, search = "random")
+rf1 <- train(lift ~., data = train, trControl = control,
+             method = "rf")
+```
+R-Square hovers between .06 and .16 with optimal tuning parameters
+
+We will now generate variable importance from simulations ofmany random forest algorithms.
+``` {r eval=FALSE}
+set.seed(54321)
+VarResults <- data.frame(var = character(), imp = numeric())
+for (i in 1:20) {
+  trainIndex = createDataPartition(lift_mod$lift,
+                                   p = 0.8,
+                                   list = FALSE)
+  train <- lift_mod[trainIndex,]
+  test <- lift_mod[-trainIndex,]
+  rf2 <- randomForest(lift ~., data = train, mtry = 10,
+                      ntree = 500, importance = TRUE)
+  temp <- data.frame(var = row.names(varImp(rf2)), imp = varImp(rf2)$Overall)
+  VarResults <- rbind(VarResults,temp)
+}
+
+SummaryVarResults <- VarResults %>%
+  group_by(var) %>%
+  summarise(imp = mean(imp)) %>%
+  arrange(desc(imp))
+```
+
+## Important variables.
+The most important variable is the test that is being run. This is specific to the experiment and is not generalizable. Beyond that, within specific tests the category is what is most important.
+ImpVars <- as.character(SummaryVarResults$var[2:6])
+Percent of revenue in category, average revenue in category,
+category variance, carbonated beverage sales, and store
+sales are the most important.
+
+When running models on predicting category revenue, and store
+revenue, a few more variables were added that were not included
+previously. While this is not directly predictive of lift,
+it is predictive of those items that feed into the variables
+important to lift (category and store revenue and variance) 
+and they may be important in different tests in the future 
+ 
+``` {r eval=FALSE}
+ImpVars <- c(ImpVars, "store_size_square_footage", "population_total",
+             "consumer_expenditure_alcohol_average",
+             "sales_noveltyentertnmntgifts_percent_retail_sales")
+```            
+
+Our end result is that the following variables are either directly important to lift, or indirectly important to category and store revenues: {r ImpVars} These variables important to category and store revenues have not appeared to contribute to lift in experiments thus far, but it is reasonable to conclude that they may be important in other experiments in the future.
+From here we can implement the same approach used previously, except instead of using principal components to indicate the directions of variance to sample across, we simply use the nine variables that are most likely to be important identified earlier. For comparison with the previous method, we could also use principal components and generate similar results.
+
+``` {r eval=FALSE}
+stemp12 <- merge(store_att, df12, by = "store_id")
+stemp12 <- stemp12[,colnames(stemp12) %in% ImpVars]
+stemp12 <- as.data.frame(scale(stemp12, center = TRUE))
+stemp12 <- stemp12[-305,]
+
+required_sample <- 20
+cluster_size <- round(nrow(stemp12) / required_sample)
+cluster_results_sup <- knvar(stemp12, clsize = cluster_size)
+```
+
+
+
+## Conclusion
+
+We strongly believe that the framework of perfect ignorance versus informed priors is appropriate in this scenario. A client may prefer to select certain variables initially based on non-experimental or anecdotal data. In this case we have established weak priors and we should seek to update those assumptions as quickly as possible.
+Furthermore, a number of different methods and algorithms could be employed at multiple stages throughout this analysis. While we took a variety of approaches to ensure that the results were robust, certain assumptions and algorithms might prove optimal for specific clients or specific scenarios. We believe that our approach is reasonable in that it balances both generalizeability and specific client insights.
+
+Finally, the above steps are sufficiently generalizable that they could be programmatically applied to any test / client for the initial structuring of a pilot test when time for customized analysis is infeasible.
+
