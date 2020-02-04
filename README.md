@@ -1,4 +1,4 @@
-#Project Name: Sample-Optimization
+Project Name: Sample-Optimization
 
 Description: This was done as part of an internship I participated in while attending Southern Utah University. I collaborated with three other students on this project to produce the final results as shown here.
 
